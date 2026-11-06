@@ -1,0 +1,47 @@
+services:
+  db:
+    image: postgis/postgis:16-3.5
+    environment:
+      POSTGRES_DB: fieldline
+      POSTGRES_USER: fieldline
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fieldline_dev_only}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/migrations/001_init.sql:/docker-entrypoint-initdb.d/001_init.sql:ro
+      - ./backend/migrations/002_demo_seed.sql:/docker-entrypoint-initdb.d/002_demo_seed.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ./backend
+    environment:
+      DATABASE_URL: postgres://fieldline:${POSTGRES_PASSWORD:-fieldline_dev_only}@db:5432/fieldline?sslmode=disable
+      PORT: "8080"
+    ports:
+      - "127.0.0.1:${API_PORT:-8081}:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "${WEB_PORT:-8080}:80"
+    depends_on:
+      api:
+        condition: service_started
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
